@@ -1,0 +1,29 @@
+include 'infinigen/datagen/configs/gt_options/blender_gt.gin'
+
+# Add channels commonly used to build VFX matting supervision.
+# These are emitted by the ground_truth render task (flat render pipeline by default).
+flat/render_image.passes_to_save = [
+    ['z', 'Depth'],
+    ['normal', 'Normal'],
+    ['vector', 'Vector'],
+    ['object_index', 'IndexOB'],
+    ['material_index', 'IndexMA'],
+]
+
+# Keep beauty decomposition for optional relighting/compositing workflows.
+full/render_image.passes_to_save = [
+    ['diffuse_direct', 'DiffDir'],
+    ['diffuse_color', 'DiffCol'],
+    ['diffuse_indirect', 'DiffInd'],
+    ['glossy_direct', 'GlossDir'],
+    ['glossy_color', 'GlossCol'],
+    ['glossy_indirect', 'GlossInd'],
+    ['transmission_direct', 'TransDir'],
+    ['transmission_color', 'TransCol'],
+    ['transmission_indirect', 'TransInd'],
+    ['volume_direct', 'VolumeDir'],
+    ['emit', 'Emit'],
+    ['environment', 'Env'],
+    ['ambient_occlusion', 'AO'],
+    ['material_index', 'IndexMA'],
+]

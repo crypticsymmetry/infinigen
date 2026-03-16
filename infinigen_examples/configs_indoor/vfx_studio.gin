@@ -1,0 +1,6 @@
+include 'infinigen_examples/configs_indoor/studio.gin'
+
+# VFX-oriented indoor setup: stable camera timing and cleaner mattes.
+compose_indoors.invisible_room_ceilings_enabled = True
+render_image.use_dof = False
+configure_blender.motion_blur_shutter = 0

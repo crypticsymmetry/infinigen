@@ -1,0 +1,23 @@
+include 'infinigen/datagen/configs/data_schema/monocular_video.gin'
+
+# VFX matting datasets are rendered as short indoor clips with a single rig/subcam.
+iterate_scene_tasks.frame_range = [1, 96]
+iterate_scene_tasks.render_frame_range = [1, 96]
+iterate_scene_tasks.n_camera_rigs = 1
+iterate_scene_tasks.n_subcams = 1
+iterate_scene_tasks.view_block_size = 32
+iterate_scene_tasks.cam_block_size = 8
+
+# Required task graph for VFX outputs:
+# 1) shortrender/renderbackup -> beauty frames (FG/BG compositing source)
+# 2) blendergt -> channels for mask/trimap/auxiliary matting supervision
+iterate_scene_tasks.camera_dependent_tasks = [
+    {'name': 'shortrender', 'func': @rendershort/queue_render},
+    {'name': 'renderbackup', 'func': @renderbackup/queue_render, 'condition': 'prev_failed'},
+    {'name': 'blendergt', 'func': @ground_truth/queue_render},
+]
+
+# Required VFX channels (materialized by render+GT outputs):
+# - Image (beauty RGB)
+# - Depth / Normal / Vector (aux)
+# - ObjectSegmentation / InstanceSegmentation / MaterialIndex (matting masks)
