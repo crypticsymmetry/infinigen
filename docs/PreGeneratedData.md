@@ -29,3 +29,6 @@ Note: dataset_loader.py is designed to be separable from the main infinigen code
 
 ## Ground Truth
 Please see [GroundTruthAnnotations.md](./GroundTruthAnnotations.md) for documentation on the various available ground truth, and examples of how they can be used once loaded.
+
+## VFX matting bundle
+See [VFXMattingBundle.md](./VFXMattingBundle.md) for a dedicated indoor VFX/matting schema, GT config, metadata template, and lightweight FG/BG/alpha/mask/trimap loader example.
