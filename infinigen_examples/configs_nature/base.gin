@@ -52,6 +52,10 @@ full/render_image.passes_to_save = [
     ['ambient_occlusion', 'AO'],
     ['material_index', 'IndexMA'],
 ]
+full/render_image.render_subject_background_pairs = True
+full/render_image.subject_name_patterns = ['subject*', 'hero*']
+full/render_image.trimap_radius = 4
+full/render_image.binary_mask_threshold = 0.5
 flat/render_image.passes_to_save = [
     ['z', 'Depth'],
     ['normal', 'Normal'],

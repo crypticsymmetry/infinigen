@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Literal
 
@@ -18,6 +19,7 @@ import bpy
 import gin
 import numpy as np
 from imageio import imwrite
+import imageio.v3 as iio
 
 from infinigen.core import init
 from infinigen.core.nodes.node_wrangler import Nodes, NodeWrangler
@@ -156,6 +158,9 @@ def configure_compositor_output(
     image_noisy,
     passes_to_save,
     saving_ground_truth,
+    output_prefix="",
+    save_alpha=False,
+    binary_mask_threshold=0.5,
 ):
     file_output_node_png = nw.new_node(
         Nodes.OutputFile,
@@ -191,7 +196,7 @@ def configure_compositor_output(
             else file_output_node_exr
         )
 
-        slot_input = file_output_node.file_slots.new(socket_name)
+        slot_input = file_output_node.file_slots.new(f"{output_prefix}{socket_name}")
         render_socket = render_layers.outputs[socket_name]
         match viewlayer_pass:
             case "vector":
@@ -212,15 +217,50 @@ def configure_compositor_output(
                 nw.links.new(render_socket, slot_input)
         file_slot_list.append(file_output_node.file_slots[slot_input.name])
 
-    slot_input = default_file_output_node.file_slots["Image"]
+    slot_name = "Image"
+    slot_input = default_file_output_node.file_slots[slot_name]
+    slot_input.path = f"{output_prefix}Image"
     image = image_denoised if image_denoised is not None else image_noisy
     nw.links.new(image, default_file_output_node.inputs["Image"])
     if saving_ground_truth:
-        slot_input.path = "UniqueInstances"
+        slot_input.path = f"{output_prefix}UniqueInstances"
     else:
         nw.links.new(image, file_output_node_exr.inputs["Image"])
-        file_slot_list.append(file_output_node_exr.file_slots[slot_input.path])
-    file_slot_list.append(default_file_output_node.file_slots[slot_input.path])
+        file_output_node_exr.file_slots[slot_name].path = f"{output_prefix}Image"
+        file_slot_list.append(file_output_node_exr.file_slots[slot_name])
+    file_slot_list.append(default_file_output_node.file_slots[slot_name])
+
+    if save_alpha:
+        alpha_output_node = nw.new_node(
+            Nodes.OutputFile,
+            attrs={
+                "base_path": str(frames_folder),
+                "format.file_format": "PNG",
+                "format.color_mode": "BW",
+            },
+        )
+        alpha_slot = alpha_output_node.file_slots.new(f"{output_prefix}AlphaMatte")
+        alpha_slot.path = f"{output_prefix}AlphaMatte"
+        nw.links.new(render_layers.outputs["Alpha"], alpha_slot)
+        file_slot_list.append(alpha_output_node.file_slots[alpha_slot.name])
+
+        binary_output_node = nw.new_node(
+            Nodes.OutputFile,
+            attrs={
+                "base_path": str(frames_folder),
+                "format.file_format": "PNG",
+                "format.color_mode": "BW",
+            },
+        )
+        binary_slot = binary_output_node.file_slots.new(f"{output_prefix}BinaryMask")
+        binary_slot.path = f"{output_prefix}BinaryMask"
+        binary_mask = nw.new_node(
+            Nodes.Math,
+            [render_layers.outputs["Alpha"], binary_mask_threshold],
+            attrs={"operation": "GREATER_THAN"},
+        )
+        nw.links.new(binary_mask.outputs[0], binary_slot)
+        file_slot_list.append(binary_output_node.file_slots[binary_slot.name])
 
     return file_slot_list
 
@@ -412,6 +452,9 @@ def configure_compositor(
     frames_folder: Path,
     passes_to_save: list,
     flat_shading: bool,
+    output_prefix="",
+    save_alpha=False,
+    binary_mask_threshold=0.5,
 ):
     compositor_node_tree = bpy.context.scene.node_tree
     nw = NodeWrangler(compositor_node_tree)
@@ -436,7 +479,82 @@ def configure_compositor(
         image_noisy=final_image_noisy,
         passes_to_save=passes_to_save,
         saving_ground_truth=flat_shading,
+        output_prefix=output_prefix,
+        save_alpha=save_alpha,
+        binary_mask_threshold=binary_mask_threshold,
     )
+
+
+def _find_subject_objects(subject_collection_names, subject_name_patterns):
+    subject_names = set()
+    for collection_name in subject_collection_names:
+        collection = bpy.data.collections.get(collection_name)
+        if collection is None:
+            logger.warning(f"Could not find subject collection '{collection_name}'")
+            continue
+        subject_names |= {obj.name for obj in collection.all_objects}
+
+    if subject_name_patterns:
+        for obj in bpy.data.objects:
+            if any(fnmatch(obj.name, p) for p in subject_name_patterns):
+                subject_names.add(obj.name)
+
+    return sorted(subject_names)
+
+
+def _set_subject_visibility(subject_names, subject_mode):
+    prior_visibility = {obj.name: obj.hide_render for obj in bpy.data.objects}
+    subject_set = set(subject_names)
+    for obj in bpy.data.objects:
+        is_subject = obj.name in subject_set
+        if subject_mode == "foreground_only":
+            obj.hide_render = not is_subject
+        elif subject_mode == "background_only":
+            obj.hide_render = is_subject
+        else:
+            obj.hide_render = prior_visibility[obj.name]
+    return prior_visibility
+
+
+def _restore_visibility(prior_visibility):
+    for name, hide_render in prior_visibility.items():
+        if name in bpy.data.objects:
+            bpy.data.objects[name].hide_render = hide_render
+
+
+def _write_render_manifest(frames_folder, suffix, entries):
+    (frames_folder / f"RenderManifest{suffix}.json").write_text(
+        json.dumps(entries, indent=2)
+    )
+
+
+def _postprocess_subject_outputs(frames_folder, suffix, trimap_radius):
+    alpha_path = frames_folder / f"ForegroundAlphaMatte{suffix}.png"
+    binary_path = frames_folder / f"ForegroundBinaryMask{suffix}.png"
+    if not alpha_path.exists() or not binary_path.exists():
+        return
+
+    alpha = iio.imread(alpha_path)
+    if alpha.ndim == 3:
+        alpha = alpha[..., 0]
+    alpha = alpha.astype(np.uint8)
+    imwrite(alpha_path, alpha)
+
+    binary = (alpha > 127).astype(np.uint8) * 255
+    imwrite(binary_path, binary)
+
+    if trimap_radius <= 0:
+        trimap = np.where(binary > 0, 255, 0).astype(np.uint8)
+    else:
+        import cv2
+
+        kernel = np.ones((2 * trimap_radius + 1, 2 * trimap_radius + 1), np.uint8)
+        fg = cv2.erode(binary, kernel)
+        bg = cv2.erode(255 - binary, kernel)
+        trimap = np.full(binary.shape, 128, dtype=np.uint8)
+        trimap[bg > 0] = 0
+        trimap[fg > 0] = 255
+    imwrite(frames_folder / f"ForegroundTrimap{suffix}.png", trimap)
 
 
 def _unlink_material_displacement_output(material: bpy.types.Material):
@@ -481,6 +599,11 @@ def render_image(
     dof_aperture_fstop=2.8,
     flat_shading=False,
     override_num_samples=None,
+    render_subject_background_pairs=False,
+    subject_collection_names=(),
+    subject_name_patterns=("subject*",),
+    trimap_radius=4,
+    binary_mask_threshold=0.5,
 ):
     tic = time.time()
 
@@ -535,14 +658,26 @@ def render_image(
 
     if not bpy.context.scene.use_nodes:
         bpy.context.scene.use_nodes = True
-    file_slot_nodes = configure_compositor(frames_folder, passes_to_save, flat_shading)
 
     indices = dict(cam_rig=camrig_id, resample=0, subcam=subcam_id)
 
-    ## Update output names
-    fileslot_suffix = get_suffix({"frame": "####", **indices})
-    for file_slot in file_slot_nodes:
-        file_slot.path = f"{file_slot.path}{fileslot_suffix}"
+    def run_render_pass(output_prefix="", save_alpha=False):
+        compositor_node_tree = bpy.context.scene.node_tree
+        compositor_node_tree.nodes.clear()
+        compositor_node_tree.links.clear()
+        file_slot_nodes = configure_compositor(
+            frames_folder,
+            passes_to_save,
+            flat_shading,
+            output_prefix=output_prefix,
+            save_alpha=save_alpha,
+            binary_mask_threshold=binary_mask_threshold,
+        )
+        fileslot_suffix = get_suffix({"frame": "####", **indices})
+        for file_slot in file_slot_nodes:
+            file_slot.path = f"{file_slot.path}{fileslot_suffix}"
+        with Timer(f"Actual rendering ({output_prefix or 'Main'})"):
+            bpy.ops.render.render(animation=True)
 
     if use_dof == "IF_TARGET_SET":
         use_dof = camera.data.dof.focus_object is not None
@@ -554,10 +689,28 @@ def render_image(
         bpy.context.scene.render.resolution_x = render_resolution_override[0]
         bpy.context.scene.render.resolution_y = render_resolution_override[1]
 
-    # Render the scene
     bpy.context.scene.camera = camera
-    with Timer("Actual rendering"):
-        bpy.ops.render.render(animation=True)
+
+    render_manifest = []
+    if render_subject_background_pairs and not flat_shading:
+        subject_names = _find_subject_objects(
+            subject_collection_names=subject_collection_names,
+            subject_name_patterns=subject_name_patterns,
+        )
+        if subject_names:
+            vis = _set_subject_visibility(subject_names, "foreground_only")
+            run_render_pass(output_prefix="Foreground", save_alpha=True)
+            _restore_visibility(vis)
+
+            vis = _set_subject_visibility(subject_names, "background_only")
+            run_render_pass(output_prefix="Background", save_alpha=False)
+            _restore_visibility(vis)
+        else:
+            logger.warning(
+                "render_subject_background_pairs=True but no subject objects were found; skipping pair renders"
+            )
+
+    run_render_pass()
 
     with Timer("Post Processing"):
         for frame in range(
@@ -576,6 +729,36 @@ def render_image(
                 bpy.context.scene.frame_set(frame)
                 suffix = get_suffix(dict(frame=frame, **indices))
                 postprocess_materialgt_output(frames_folder, suffix)
+
+                frame_manifest = {
+                    "frame_suffix": suffix,
+                    "main_rgb": f"Image{suffix}.png",
+                }
+                if render_subject_background_pairs:
+                    _postprocess_subject_outputs(frames_folder, suffix, trimap_radius)
+                    fg_image = frames_folder / f"ForegroundImage{suffix}.png"
+                    bg_image = frames_folder / f"BackgroundImage{suffix}.png"
+                    alpha = frames_folder / f"ForegroundAlphaMatte{suffix}.png"
+                    binary = frames_folder / f"ForegroundBinaryMask{suffix}.png"
+                    trimap = frames_folder / f"ForegroundTrimap{suffix}.png"
+                    if fg_image.exists() and bg_image.exists():
+                        frame_manifest.update(
+                            {
+                                "foreground_rgb": fg_image.name,
+                                "background_rgb": bg_image.name,
+                                "alpha_matte": alpha.name,
+                                "binary_mask": binary.name,
+                                "trimap": trimap.name,
+                            }
+                        )
+                render_manifest.append(frame_manifest)
+
+                _write_render_manifest(frames_folder, suffix, frame_manifest)
+
+    if render_manifest and not flat_shading:
+        (frames_folder / "RenderManifest.json").write_text(
+            json.dumps(render_manifest, indent=2)
+        )
 
     for file in tmp_dir.glob("*.png"):
         file.unlink()
