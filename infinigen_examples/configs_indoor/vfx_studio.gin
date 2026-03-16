@@ -1,0 +1,19 @@
+include 'infinigen_examples/configs_indoor/studio.gin'
+
+# Human actor placement knobs.
+populate_human_actors.actor_count = 3
+populate_human_actors.category_weights = {
+    'human_actor': 1.0,
+}
+
+# Human asset source and spawn-time randomization hooks.
+register_human_actor_asset_directory.asset_dir = 'infinigen/assets/humans/source'
+register_human_actor_asset_directory.category = 'human_actor'
+register_human_actor_asset_directory.weight = 1.0
+register_human_actor_asset_directory.body_shape_presets = ['Slim', 'Athletic', 'Heavy']
+register_human_actor_asset_directory.clothing_variants = ['Casual', 'Formal', 'Workwear']
+register_human_actor_asset_directory.material_overrides = {
+    'Skin': (0.72, 0.54, 0.44, 1.0),
+}
+register_human_actor_asset_directory.min_height_m = 1.2
+register_human_actor_asset_directory.max_height_m = 2.5
