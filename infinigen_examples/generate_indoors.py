@@ -26,6 +26,7 @@ from infinigen.assets.placement.floating_objects import FloatingObjectPlacement
 from infinigen.assets.utils.decorate import read_co
 from infinigen.core import execute_tasks, init, placement, tagging
 from infinigen.core import tags as t
+from infinigen.core.animation import apply_makehuman_retargeting
 from infinigen.core.constraints import checks
 from infinigen.core.constraints import constraint_language as cl
 from infinigen.core.constraints import reasoning as r
@@ -306,6 +307,15 @@ def compose_indoors(output_folder: Path, scene_seed: int, **overrides):
 
     p.run_stage(
         "populate_assets", populate.populate_state_placeholders, state, use_chance=False
+    )
+
+    p.run_stage(
+        "retarget_makehuman",
+        apply_makehuman_retargeting,
+        output_folder=output_folder,
+        use_chance=False,
+        prereq="populate_assets",
+        default=[],
     )
 
     def place_floating():
