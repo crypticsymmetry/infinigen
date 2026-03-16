@@ -4,6 +4,7 @@
 # Authors: Alexander Raistrick
 
 import infinigen.assets.static_assets as static_assets
+from infinigen.assets import humans
 from infinigen.assets.objects import (
     appliances,
     bathroom,
@@ -194,6 +195,13 @@ def home_asset_usage():
 
     # endregion furniture
 
+    if not humans.get_registered_human_actors():
+        humans.register_human_actor_asset_directory()
+    used_as[Semantics.HumanActor] = {
+        registration.factory_cls
+        for registration in humans.get_registered_human_actors().values()
+    }
+
     used_as[Semantics.WallDecoration] = {
         wall_decorations.WallArtFactory,
         wall_decorations.MirrorFactory,
@@ -230,6 +238,7 @@ def home_asset_usage():
         used_as[Semantics.WallDecoration],
         used_as[Semantics.HandheldItem],
         used_as[Semantics.Lighting],
+        used_as[Semantics.HumanActor],
         {
             tableware.PlantContainerFactory,
             tableware.LargePlantContainerFactory,
