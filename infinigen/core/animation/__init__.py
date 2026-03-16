@@ -1,5 +1,5 @@
-# Copyright (C) 2024, Princeton University.
+"""Animation policy utilities for indoor human motion selection."""
 
-from .human_retarget import apply_makehuman_retargeting
+from .policy_human import HumanAnimationPolicy, MocapClipCandidate, PolicyDecision
 
-__all__ = ["apply_makehuman_retargeting"]
+__all__ = ["HumanAnimationPolicy", "MocapClipCandidate", "PolicyDecision"]
