@@ -6,3 +6,4 @@
 from . import sky_lighting
 from .caustics_lamp import CausticsLampFactory
 from .indoor_lights import PointLampFactory
+from . import studio_lighting

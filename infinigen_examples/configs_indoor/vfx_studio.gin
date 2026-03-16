@@ -4,3 +4,43 @@ include 'infinigen_examples/configs_indoor/studio.gin'
 compose_indoors.invisible_room_ceilings_enabled = True
 render_image.use_dof = False
 configure_blender.motion_blur_shutter = 0
+# Studio-style indoor preset for repeatable VFX dataset generation.
+
+# Keep room graph compact with one large stage-like room.
+home_room_constraints.has_fewer_rooms = True
+home_room_constraints.studio_mode = True
+home_room_constraints.studio_min_floor_area = 90
+home_room_constraints.studio_max_floor_area = 260
+
+# Studio object priors and subject controls.
+home_furniture_constraints.studio_mode = True
+home_furniture_constraints.fg_subject_count = 2
+home_furniture_constraints.bg_subject_count = 1
+home_furniture_constraints.stage_front_ratio = 0.35
+home_furniture_constraints.stage_back_ratio = 0.85
+home_furniture_constraints.studio_clutter_max = 4
+
+# Keep generation stable for dataset runs.
+compose_indoors.terrain_enabled = False
+compose_indoors.solve_steps_large = 160
+compose_indoors.solve_steps_medium = 120
+compose_indoors.solve_steps_small = 80
+include 'infinigen_examples/configs_indoor/studio.gin'
+
+# Human actor placement knobs.
+populate_human_actors.actor_count = 3
+populate_human_actors.category_weights = {
+    'human_actor': 1.0,
+}
+
+# Human asset source and spawn-time randomization hooks.
+register_human_actor_asset_directory.asset_dir = 'infinigen/assets/humans/source'
+register_human_actor_asset_directory.category = 'human_actor'
+register_human_actor_asset_directory.weight = 1.0
+register_human_actor_asset_directory.body_shape_presets = ['Slim', 'Athletic', 'Heavy']
+register_human_actor_asset_directory.clothing_variants = ['Casual', 'Formal', 'Workwear']
+register_human_actor_asset_directory.material_overrides = {
+    'Skin': (0.72, 0.54, 0.44, 1.0),
+}
+register_human_actor_asset_directory.min_height_m = 1.2
+register_human_actor_asset_directory.max_height_m = 2.5

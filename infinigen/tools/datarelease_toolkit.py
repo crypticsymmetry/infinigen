@@ -325,6 +325,7 @@ def reorganize_old_framesfolder(frames_old):
         "polycounts.txt",
         "version.txt",
         "MaskTag.json",
+        "RenderManifest.json",
         "scene.blend",
         "pipeline_coarse.csv",
     ]

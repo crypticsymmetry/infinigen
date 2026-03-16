@@ -85,6 +85,17 @@ To create a large dataset of many random rooms, we recommend:
 python -m infinigen.datagen.manage_jobs --output_folder outputs/my_dataset --num_scenes 1000 --pipeline_configs local_256GB.gin monocular.gin blender_gt.gin indoor_background_configs.gin --configs singleroom.gin --pipeline_overrides get_cmd.driver_script='infinigen_examples.generate_indoors' manage_datagen_jobs.num_concurrent=16 --overrides compose_indoors.restrict_single_supported_roomtype=True 
 ```
 
+
+For repeatable **VFX studio** scenes (large stage layout with constrained set dressing and FG/BG subject controls), use the `vfx_studio.gin` preset:
+```bash
+python -m infinigen.datagen.manage_jobs --output_folder outputs/vfx_studio --num_scenes 200 --pipeline_configs local_256GB.gin monocular.gin blender_gt.gin indoor_background_configs.gin --configs vfx_studio.gin --pipeline_overrides get_cmd.driver_script='infinigen_examples.generate_indoors' manage_datagen_jobs.num_concurrent=16 --overrides compose_indoors.restrict_single_supported_roomtype=True
+```
+
+To reproduce an identical studio scene for debugging, pin a seed:
+```bash
+python -m infinigen.datagen.manage_jobs --output_folder outputs/vfx_studio_debug --num_scenes 1 --specific_seed 424242 --pipeline_configs local_256GB.gin monocular.gin blender_gt.gin indoor_background_configs.gin --configs vfx_studio.gin --pipeline_overrides get_cmd.driver_script='infinigen_examples.generate_indoors' manage_datagen_jobs.num_concurrent=1 --overrides compose_indoors.restrict_single_supported_roomtype=True
+```
+
 You can inspect `outputs/my_dataset/SEED/` to see the running logs of the subprocesses and output results.
 
 See [ConfiguringInfinigen.md](./ConfiguringInfinigen.md) for documentation on `manage_jobs` and commandline options.
