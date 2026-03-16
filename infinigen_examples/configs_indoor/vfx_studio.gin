@@ -1,3 +1,24 @@
+# Studio-style indoor preset for repeatable VFX dataset generation.
+
+# Keep room graph compact with one large stage-like room.
+home_room_constraints.has_fewer_rooms = True
+home_room_constraints.studio_mode = True
+home_room_constraints.studio_min_floor_area = 90
+home_room_constraints.studio_max_floor_area = 260
+
+# Studio object priors and subject controls.
+home_furniture_constraints.studio_mode = True
+home_furniture_constraints.fg_subject_count = 2
+home_furniture_constraints.bg_subject_count = 1
+home_furniture_constraints.stage_front_ratio = 0.35
+home_furniture_constraints.stage_back_ratio = 0.85
+home_furniture_constraints.studio_clutter_max = 4
+
+# Keep generation stable for dataset runs.
+compose_indoors.terrain_enabled = False
+compose_indoors.solve_steps_large = 160
+compose_indoors.solve_steps_medium = 120
+compose_indoors.solve_steps_small = 80
 include 'infinigen_examples/configs_indoor/studio.gin'
 
 # Human actor placement knobs.
