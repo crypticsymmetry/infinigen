@@ -54,7 +54,12 @@ def sample_home_constraint_params():
 
 
 @gin.configurable
-def home_room_constraints(has_fewer_rooms=False):
+def home_room_constraints(
+    has_fewer_rooms=False,
+    studio_mode=False,
+    studio_min_floor_area=80,
+    studio_max_floor_area=220,
+):
     constraints = OrderedDict()
     score_terms = OrderedDict()
 
@@ -334,6 +339,20 @@ def home_room_constraints(has_fewer_rooms=False):
             * (rooms[Semantics.Bathroom].count() >= 1)
         )
 
+    if studio_mode:
+        node_constraint = (
+            (rooms[Semantics.LivingRoom].count().in_range(1, 1))
+            * (rooms[Semantics.Entrance].count().in_range(1, 1))
+            * (rooms[Semantics.Hallway].count().in_range(0, 1))
+            * (rooms[Semantics.Bedroom].count().in_range(0, 0))
+            * (rooms[Semantics.Kitchen].count().in_range(0, 0))
+            * (rooms[Semantics.DiningRoom].count().in_range(0, 0))
+            * (rooms[Semantics.Bathroom].count().in_range(0, 1))
+            * (rooms[Semantics.StaircaseRoom].count().in_range(0, 0))
+            * (rooms[Semantics.LivingRoom].sum(lambda r: r.area()) >= studio_min_floor_area)
+            * (rooms[Semantics.LivingRoom].sum(lambda r: r.area()) <= studio_max_floor_area)
+        )
+
     constraints["node"] = node_constraint
 
     all_rooms = cl.scene()[Semantics.RoomContour]
@@ -469,6 +488,20 @@ def home_room_constraints(has_fewer_rooms=False):
         .minimize(weight=5.0)
     )
 
+    if studio_mode:
+        room_term = (
+            rooms[Semantics.LivingRoom]
+            .sum(lambda r: (r.area() / 120).log().hinge(0, 0.25).pow(2))
+            .minimize(weight=800.0)
+            + rooms[Semantics.LivingRoom]
+            .sum(lambda r: r.aspect_ratio().log().hinge(0, 0.8))
+            .minimize(weight=300.0)
+            + rooms[-Semantics.LivingRoom].count().minimize(weight=400.0)
+            + rooms[Semantics.LivingRoom]
+            .sum(lambda r: r.narrowness(constants, 4.0))
+            .minimize(weight=5000.0)
+        )
+
     score_terms["room"] = room_term
 
     return cl.Problem(
@@ -476,7 +509,14 @@ def home_room_constraints(has_fewer_rooms=False):
     )
 
 
-def home_furniture_constraints():
+def home_furniture_constraints(
+    studio_mode=False,
+    fg_subject_count=1,
+    bg_subject_count=1,
+    stage_front_ratio=0.3,
+    stage_back_ratio=0.75,
+    studio_clutter_max=6,
+):
     """Construct a constraint graph which incentivizes realistic home layouts.
 
     Result will contain both hard constraints (`constraints`) and soft constraints (`score_terms`).
@@ -583,6 +623,65 @@ def home_furniture_constraints():
     )
 
     # endregion
+
+    if studio_mode:
+        livingrooms = rooms[Semantics.LivingRoom].excludes(cu.room_types)
+        stands = furniture[
+            {
+                lamp.FloorLampFactory,
+                lamp.DeskLampFactory,
+                seating.OfficeChairFactory,
+            }
+        ].related_to(livingrooms)
+        practical_lights = obj[Semantics.Lighting][
+            {
+                lamp.CeilingLightFactory,
+                lamp.FloorLampFactory,
+                lamp.DeskLampFactory,
+            }
+        ].related_to(livingrooms)
+        backdrop = obj[Semantics.WallDecoration][wall_decorations.WallArtFactory].related_to(
+            livingrooms, cu.flush_wall
+        )
+        softboxes = obj[Semantics.Lighting][lamp.CeilingLightFactory].related_to(livingrooms)
+        sparse_clutter = obj[Semantics.HandheldItem].related_to(livingrooms)
+
+        def in_front_stage(o, r):
+            return o.distance(r, cu.walltags).hinge(stage_front_ratio, stage_front_ratio + 0.7)
+
+        def in_back_stage(o, r):
+            return o.distance(r, cu.walltags).hinge(stage_back_ratio, stage_back_ratio + 1.0)
+
+        constraints["studio_set_dressing"] = livingrooms.all(
+            lambda r: (
+                backdrop.related_to(r).count().in_range(1, 2)
+                * stands.related_to(r).count().in_range(2, 8)
+                * softboxes.related_to(r).count().in_range(1, 4)
+                * practical_lights.related_to(r).count().in_range(2, 8)
+                * sparse_clutter.related_to(r).count().in_range(0, studio_clutter_max)
+            )
+        )
+
+        fg_subjects = furniture[Semantics.LoungeSeating].related_to(livingrooms)
+        bg_subjects = furniture[Semantics.Chair].related_to(livingrooms)
+
+        constraints["studio_subject_counts"] = livingrooms.all(
+            lambda r: (
+                fg_subjects.related_to(r).count().in_range(fg_subject_count, fg_subject_count + 1)
+                * bg_subjects.related_to(r).count().in_range(bg_subject_count, bg_subject_count + 2)
+            )
+        )
+
+        score_terms["studio_subject_regions"] = livingrooms.mean(
+            lambda r: (
+                fg_subjects.related_to(r).mean(
+                    lambda t: in_front_stage(t, r).minimize(weight=20)
+                )
+                + bg_subjects.related_to(r).mean(
+                    lambda t: in_back_stage(t, r).minimize(weight=12)
+                )
+            )
+        )
 
     # region furniture
 
