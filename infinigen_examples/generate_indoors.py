@@ -20,6 +20,10 @@ import numpy as np
 
 from infinigen import repo_root
 from infinigen.assets import lighting
+from infinigen.assets.humans import (
+    get_registered_human_actors,
+    register_human_actor_asset_directory,
+)
 from infinigen.assets.materials.dev import InvisibleToCamera
 from infinigen.assets.objects.wall_decorations.skirting_board import make_skirting_board
 from infinigen.assets.placement.floating_objects import FloatingObjectPlacement
@@ -62,6 +66,52 @@ from . import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@gin.configurable
+def populate_human_actors(
+    scene_seed: int,
+    solved_bbox,
+    actor_count: int = 0,
+    category_weights: dict[str, float] | None = None,
+):
+    if actor_count <= 0:
+        return []
+
+    register_human_actor_asset_directory()
+    registered = get_registered_human_actors()
+    if not registered:
+        logger.warning("No human actor categories registered; skipping actor placement")
+        return []
+
+    categories = list(registered.keys())
+    effective_weights = []
+    for c in categories:
+        base_weight = registered[c].weight
+        if category_weights is not None and c in category_weights:
+            base_weight = category_weights[c]
+        effective_weights.append(base_weight)
+
+    weights = np.array(effective_weights, dtype=float)
+    if np.any(weights < 0) or np.sum(weights) <= 0:
+        raise ValueError(f"Invalid human actor category weights: {category_weights}")
+    weights = weights / np.sum(weights)
+
+    min_corner, max_corner = solved_bbox
+    floor_z = min_corner[2]
+    actors = []
+
+    for i in range(actor_count):
+        category = np.random.choice(categories, p=weights)
+        fac = registered[category].factory_cls(scene_seed + i)
+        loc = (
+            np.random.uniform(min_corner[0], max_corner[0]),
+            np.random.uniform(min_corner[1], max_corner[1]),
+            floor_z,
+        )
+        rot = (0, 0, np.random.uniform(-np.pi, np.pi))
+        actors.append(fac.spawn_asset(i=i, loc=loc, rot=rot))
+    return actors
 
 
 def default_greedy_stages():
@@ -306,6 +356,14 @@ def compose_indoors(output_folder: Path, scene_seed: int, **overrides):
 
     p.run_stage(
         "populate_assets", populate.populate_state_placeholders, state, use_chance=False
+    )
+
+    p.run_stage(
+        "populate_human_actors",
+        populate_human_actors,
+        scene_seed=scene_seed,
+        solved_bbox=solved_bbox,
+        use_chance=False,
     )
 
     def place_floating():
