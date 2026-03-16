@@ -71,6 +71,7 @@ class Semantics(EnumTag):
     FloorMat = "FloorMat"
     WallDecoration = "wall-decoration"
     HandheldItem = "handheld-item"
+    HumanActor = "human-actor"
 
     # Furniture functions
     Storage = "storage"
